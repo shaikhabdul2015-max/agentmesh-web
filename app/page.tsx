@@ -24,7 +24,7 @@ interface QuoteReceipt {
 }
 
 export default function HomePage() {
-  const [logs, setLogs] = useState<string[]>(['AgentMesh Multi-Node Inspector ready. Enter a goal to compare local shops.']);
+  const [logs, setLogs] = useState<string[]>(['AgentMesh Pro Inspector ready. Enter a goal to compare 3 local shops.']);
   const [goal, setGoal] = useState('Fix my flat tire as cheap as possible');
   const [token, setToken] = useState('');
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
@@ -66,8 +66,9 @@ export default function HomePage() {
       body: JSON.stringify({ action: 'list_services' })
     });
     const d = await r.json();
-    log(`2. Directory Scanned: Found ${d.shops.length} open-agentic bicycle nodes.`);
-    return d.shops;
+    const shopsList: ShopItem[] = d.shops || [];
+    log(`2. Directory Scanned: Found ${shopsList.length} open-agentic bicycle shops.`);
+    return shopsList;
   };
 
   const requestQuote = async (shopId: string, serviceId: string) => {
@@ -82,6 +83,8 @@ export default function HomePage() {
       setSecondsLeft(300);
       setStatus('Pending Human Approval');
       log(`4. HITL Gate Active (HTTP 403): Bound HMAC token issued for ${d.shop.name} -> ${d.service.name} ($${d.service.price}).`);
+    } else if (d.error) {
+      log(`API Error: ${d.error}`);
     }
   };
 
@@ -95,6 +98,7 @@ export default function HomePage() {
       await discover();
       await sleep(600);
       const shops = await fetchDirectory();
+      if (!shops.length) throw new Error('No shops returned');
       await sleep(600);
 
       const q = goal.toLowerCase();
@@ -220,13 +224,7 @@ export default function HomePage() {
       <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
         <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>2. Manual Node Override & Human-in-the-Loop Gate</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+          <button onClick={discover} disabled={running} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#f8fafc' }}>Discover</button>
+          <button onClick={fetchDirectory} disabled={running} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#f8fafc' }}>List Shops</button>
           <select value={selectedShop} onChange={(e) => setSelectedShop(e.target.value)} disabled={!!token || running} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
             <option value="velofix-hub">VeloFix Express (Fastest)</option>
-            <option value="metro-cycle">Metro Cycle Care (Balanced)</option>
-            <option value="budget-pedal">Budget Pedal Works (Cheapest)</option>
-          </select>
-          <select value={selectedService} onChange={(e) => setSelectedService(e.target.value)} disabled={!!token || running} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-            <option value="tune-up">Full Tune-Up</option>
-            <option value="flat-tire">Flat Tire</option>
-            <option value="brake-bleed">Brake Bleed</option>
-          </select>
