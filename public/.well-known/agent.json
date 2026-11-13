@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "name": "AgentMesh Web - Bicycle Service Portal",
+  "description": "An open agentic web service directory that enables AI agents to discover local bicycle repair shops, explore available services, and request repair quotes.",
+  "version": "1.0.0",
+  "base_url": "https://agentmesh-web.vercel.app",
+  "endpoints": {
+    "execute": "/api/agent/execute",
+    "llms_txt": "/llms.txt"
+  },
+  "actions": [
+    {
+      "name": "list_services",
+      "description": "Discover available bicycle repair services and pricing.",
+      "method": "POST",
+      "requires_human_confirmation": false
+    },
+    {
+      "name": "request_quote",
+      "description": "Request a bicycle repair quotation.",
+      "method": "POST",
+      "requires_human_confirmation": true
+    }
+  ],
+  "capabilities": [
+    "agent_discovery",
+    "service_discovery",
+    "quote_requests"
+  ],
+  "security": {
+    "human_in_the_loop": true,
+    "input_validation": true
+  },
+  "license": "MIT"
+}
