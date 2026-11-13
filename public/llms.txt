@@ -1,0 +1,23 @@
+# AgentMesh Web - Bicycle Repair Portal
+
+> An open, inspectable service portal for humans and autonomous web agents.
+
+## Instructions for AI Agents
+- Discover capabilities via `/.well-known/agent.json`.
+- Query available repair services using `POST /api/agent/execute` with `{"action": "list_services"}`.
+- Never submit `request_quote` without explicit human confirmation (`"human_confirmed": true`).
+- Never assume human confirmation. The backend independently enforces confirmation before processing quote requests.
+- Validate all inputs and handle API errors safely.
+- Do not expose private user information or submit requests without authorization.
+
+## Available Actions
+- `list_services`: Retrieve available bicycle repair services and pricing.
+- `request_quote`: Submit a bicycle repair quotation request after explicit human confirmation.
+
+## Security
+- Human-in-the-loop authorization.
+- Server-side input validation.
+- Explicit confirmation for quote requests.
+
+## License
+- MIT
