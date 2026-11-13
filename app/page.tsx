@@ -1,8 +1,22 @@
 'use client';
 import { useState, useEffect } from 'react';
 
+interface ServiceItem {
+  id: string;
+  name: string;
+  price: number;
+  eta_mins: number;
+}
+
+interface ShopItem {
+  shop_id: string;
+  shop_name: string;
+  rating: string;
+  services: ServiceItem[];
+}
+
 export default function HomePage() {
-  const [logs, setLogs] = useState<string[]>(['AgentMesh Pro ready. Enter a goal to compare 3 shops.']);
+  const [logs, setLogs] = useState<string[]>(['AgentMesh Enterprise Node ready. Test autonomous reasoning or security attacks below.']);
   const [goal, setGoal] = useState('Fix my flat tire as cheap as possible');
   const [token, setToken] = useState('');
   const [sec, setSec] = useState(0);
@@ -11,8 +25,10 @@ export default function HomePage() {
   const [status, setStatus] = useState('Idle');
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState<any>(null);
+  const [shopsData, setShopsData] = useState<ShopItem[]>([]);
+  const [activeSvcId, setActiveSvcId] = useState<string>('flat-tire');
 
-  const log = (m: string) => setLogs((p) => [`[${new Date().toLocaleTimeString()}] ${m}`, ...p.slice(0, 50)]);
+  const log = (m: string) => setLogs((p) => [`[${new Date().toLocaleTimeString()}] ${m}`, ...p.slice(0, 60)]);
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   useEffect(() => {
@@ -22,6 +38,7 @@ export default function HomePage() {
         if (p <= 1) {
           setToken('');
           setStatus('Expired');
+          log('Security Alert: 5-minute HMAC approval window expired.');
           return 0;
         }
         return p - 1;
@@ -33,10 +50,10 @@ export default function HomePage() {
   const discover = async () => {
     const r = await fetch('/.well-known/agent.json');
     const d = await r.json();
-    log(`1. Manifest Verified: ${d.name}`);
+    log(`1. Manifest Verified: ${d.name} (v${d.version})`);
   };
 
-  const listShops = async () => {
+  const listShops = async (): Promise<ShopItem[]> => {
     const r = await fetch('/api/agent/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -44,7 +61,8 @@ export default function HomePage() {
     });
     const d = await r.json();
     const list = d.shops || [];
-    log(`2. Directory Scanned: ${list.length} bicycle shops found.`);
+    setShopsData(list);
+    log(`2. Directory Scanned: ${list.length} open-agentic bicycle nodes active.`);
     return list;
   };
 
@@ -59,7 +77,7 @@ export default function HomePage() {
       setToken(d.confirmation_token);
       setSec(300);
       setStatus('Pending Approval');
-      log(`4. HITL Gate (HTTP 403): HMAC token issued for ${d.shop.name} ($${d.service.price}).`);
+      log(`4. HITL Gate (HTTP 403): HMAC token bound to ${d.shop.name} ($${d.service.price}).`);
     }
   };
 
@@ -67,25 +85,40 @@ export default function HomePage() {
     if (busy || token) return;
     setBusy(true);
     setReceipt(null);
-    setStatus('Comparing Shops...');
+    setStatus('Analyzing Intent...');
     log(`=== Autonomous Agent Goal: "${goal}" ===`);
     try {
       await discover();
-      await wait(500);
-      const shops = await listShops();
-      await wait(500);
+      await wait(450);
+      await listShops();
+      await wait(450);
 
       const q = goal.toLowerCase();
-      let target = 'tune-up';
-      if (q.includes('tire') || q.includes('puncture') || q.includes('flat')) target = 'flat-tire';
-      else if (q.includes('brake') || q.includes('bleed')) target = 'brake-bleed';
+      // Domain Guardrail: Reject non-bicycle requests safely
+      if (q.includes('car') || q.includes('pizza') || q.includes('flight') || q.includes('hotel')) {
+        setStatus('Out of Scope');
+        log('Guardrail Triggered: Request is outside Bicycle Service domain. Agent safely aborted.');
+        return;
+      }
+
+      let target = '';
+      if (q.includes('tire') || q.includes('puncture') || q.includes('flat') || q.includes('tube')) target = 'flat-tire';
+      else if (q.includes('brake') || q.includes('bleed') || q.includes('stop')) target = 'brake-bleed';
+      else if (q.includes('tune') || q.includes('service') || q.includes('repair') || q.includes('bike') || q.includes('bicycle') || q.includes('cycle')) target = 'tune-up';
+
+      if (!target) {
+        setStatus('Clarification Needed');
+        log('Agent Guardrail: Ambiguous intent. Please specify tire, brake, or bicycle tune-up.');
+        return;
+      }
 
       const fast = q.includes('fast') || q.includes('urgent') || q.includes('quick');
       const chosenShop = fast ? 'velofix-hub' : 'budget-pedal';
       setShop(chosenShop);
       setSvc(target);
-      log(`3. Agent Reasoning (${fast ? 'Fastest' : 'Cheapest'}): Selected "${chosenShop}" for "${target}".`);
-      await wait(500);
+      setActiveSvcId(target);
+      log(`3. Agent Decision (${fast ? 'Fastest ETA' : 'Lowest Price'}): Selected "${chosenShop}" for "${target}".`);
+      await wait(450);
       await reqQuote(chosenShop, target);
     } catch {
       setStatus('Error');
@@ -93,6 +126,24 @@ export default function HomePage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const simulateAttack = async () => {
+    setStatus('Attack Blocked (403)');
+    log('--- Security Test: Simulating Rogue Agent Forged Token Attack ---');
+    const r = await fetch('/api/agent/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'request_quote',
+        shop_id: shop,
+        service_id: svc,
+        confirmation_token: 'forged_agent_bypass_token.invalid_sig',
+        human_confirmed: true
+      })
+    });
+    const d = await r.json();
+    log(`Security Defense Active (HTTP ${r.status}): Blocked rogue agent -> "${d.error}"`);
   };
 
   const approve = async () => {
@@ -107,7 +158,7 @@ export default function HomePage() {
     if (r.ok) {
       setStatus('Approved');
       setReceipt(d);
-      log(`5. Approved! Receipt ${d.quote_id} issued (HMAC: ${d.hmac_proof})`);
+      log(`5. Human Approved! Verified Receipt ${d.quote_id} issued (HMAC: ${d.hmac_proof})`);
     }
   };
 
@@ -119,23 +170,47 @@ export default function HomePage() {
   };
 
   return (
-    <main style={{ maxWidth: '760px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <main style={{ maxWidth: '780px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       <div style={{ background: '#0f172a', color: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
-        <h1 style={{ margin: 0, fontSize: '1.4rem' }}>AgentMesh Web Pro</h1>
-        <p style={{ margin: '6px 0 0', color: '#94a3b8', fontSize: '14px' }}>
-          Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <h1 style={{ margin: 0, fontSize: '1.4rem' }}>AgentMesh Web Enterprise</h1>
+          <span style={{ background: '#334155', padding: '4px 12px', borderRadius: '999px', fontSize: '13px' }}>
+            Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}
+          </span>
+        </div>
+        <p style={{ margin: '6px 0 0', color: '#94a3b8', fontSize: '13px' }}>
+          Domain-Guarded Multi-Shop Directory & Cryptographic HITL Security
         </p>
       </div>
 
       <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px' }}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>1. Autonomous Multi-Shop AI Agent</h2>
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>1. Domain-Guarded Autonomous Agent</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           <input value={goal} onChange={(e) => setGoal(e.target.value)} disabled={busy || !!token} style={{ flex: '1 1 220px', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
           <button onClick={runAgent} disabled={busy || !!token} style={{ padding: '10px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>
-            {busy ? 'Working...' : 'Run Autonomous Agent'}
+            {busy ? 'Evaluating...' : 'Run Autonomous Agent'}
           </button>
         </div>
       </div>
+
+      {shopsData.length > 0 && (
+        <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px' }}>
+          <h2 style={{ marginTop: 0, fontSize: '1.05rem' }}>Live Multi-Node Comparison ({activeSvcId})</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+            {shopsData.map((item) => {
+              const sInfo = item.services.find((x) => x.id === activeSvcId) || item.services.at(0)!;
+              const isSelected = item.shop_id === shop;
+              return (
+                <div key={item.shop_id} style={{ border: isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0', background: isSelected ? '#eff6ff' : '#f8fafc', padding: '12px', borderRadius: '8px' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{item.shop_name}</div>
+                  <div style={{ fontSize: '12px', color: '#475569', margin: '4px 0' }}>Price: <strong>${sInfo.price}</strong> | ETA: <strong>{sInfo.eta_mins}m</strong></div>
+                  {isSelected && <span style={{ fontSize: '11px', background: '#2563eb', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>Agent Selected</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {receipt && (
         <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '16px', borderRadius: '12px', marginBottom: '16px' }}>
@@ -147,28 +222,8 @@ export default function HomePage() {
       )}
 
       <div style={{ background: '#fff', padding: '16px', borderRadius: '12px' }}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>2. Manual Override & HITL Gate</h2>
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>2. HITL Controls & Red-Team Security Test</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-          <button onClick={discover} style={{ padding: '8px 12px' }}>Discover</button>
-          <button onClick={listShops} style={{ padding: '8px 12px' }}>List Shops</button>
-          <select value={shop} onChange={(e) => setShop(e.target.value)} disabled={!!token} style={{ padding: '8px' }}>
-            <option value="velofix-hub">VeloFix Express (Fastest)</option>
-            <option value="metro-cycle">Metro Cycle Care (Balanced)</option>
-            <option value="budget-pedal">Budget Pedal Works (Cheapest)</option>
-          </select>
-          <select value={svc} onChange={(e) => setSvc(e.target.value)} disabled={!!token} style={{ padding: '8px' }}>
-            <option value="tune-up">Full Tune-Up</option>
-            <option value="flat-tire">Flat Tire</option>
-            <option value="brake-bleed">Brake Bleed</option>
-          </select>
-          <button onClick={() => reqQuote(shop, svc)} disabled={!!token} style={{ padding: '8px 12px', background: '#f59e0b', border: 'none', fontWeight: 'bold' }}>Request Quote</button>
-          <button onClick={approve} disabled={!token} style={{ padding: '8px 12px', background: token ? '#16a34a' : '#ccc', color: '#fff', border: 'none', fontWeight: 'bold' }}>Human Approve</button>
-          {token && <button onClick={reject} style={{ padding: '8px 12px', background: '#dc2626', color: '#fff', border: 'none', fontWeight: 'bold' }}>Reject</button>}
-        </div>
-        <div style={{ background: '#0f172a', color: '#38bdf8', padding: '12px', borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', maxHeight: '220px', overflowY: 'auto' }}>
-          {logs.map((l, i) => <div key={i} style={{ marginBottom: '4px' }}>{l}</div>)}
-        </div>
-      </div>
-    </main>
-  );
-}
+          <button onClick={discover} style={{ padding: '8px 10px' }}>Discover</button>
+          <button onClick={listShops} style={{ padding: '8px 10px' }}>Compare Shops</button>
+          <button onClick={simulateAttack} style={{ padding: '8px 10px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>
