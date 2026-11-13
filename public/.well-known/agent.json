@@ -3,7 +3,7 @@
   "name": "AgentMesh Web - Bicycle Service Portal",
   "description": "An open agentic web service directory that enables AI agents to discover local bicycle repair shops, explore available services, and request repair quotes.",
   "version": "1.0.0",
-  "base_url": "https://agentmesh-web.vercel.app",
+  "https://vercel.app": "https://agentmesh-web.vercel.app",
   "endpoints": {
     "execute": "/api/agent/execute",
     "llms_txt": "/llms.txt"
