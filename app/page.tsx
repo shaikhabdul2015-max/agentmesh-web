@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 
 export default function HomePage() {
-  const [logs, setLogs] = useState<string[]>(['AgentMesh Ultra Node ready. Select a preset or enter a custom goal.']);
+  const [logs, setLogs] = useState<string[]>(['AgentMesh Ultra ready. Select a preset or enter a goal.']);
   const [goal, setGoal] = useState('Fix my flat tire as cheap as possible');
   const [token, setToken] = useState('');
   const [sec, setSec] = useState(0);
@@ -12,9 +12,9 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState<any>(null);
   const [shops, setShops] = useState<any[]>([]);
-  const [guardrailMsg, setGuardrailMsg] = useState('');
-  const [lastJson, setLastJson] = useState<any>(null);
-  const [showJson, setShowJson] = useState(false);
+  const [guard, setGuard] = useState('');
+  const [raw, setRaw] = useState<any>(null);
+  const [showRaw, setShowRaw] = useState(false);
 
   const log = (m: string) => setLogs((p) => [`[${new Date().toLocaleTimeString()}] ${m}`, ...p.slice(0, 50)]);
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -27,20 +27,20 @@ export default function HomePage() {
 
   const discover = async () => {
     const d = await (await fetch('/.well-known/agent.json')).json();
-    setLastJson(d);
+    setRaw(d);
     log(`1. Manifest Verified: ${d.name}`);
   };
 
   const listShops = async () => {
     const d = await (await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list_services' }) })).json();
     setShops(d.shops || []);
-    setLastJson(d);
+    setRaw(d);
     log(`2. Directory Scanned: ${(d.shops || []).length} bicycle nodes active.`);
   };
 
   const reqQuote = async (sh: string, sv: string) => {
     const d = await (await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: sh, service_id: sv }) })).json();
-    setLastJson(d);
+    setRaw(d);
     if (d.confirmation_token) {
       setToken(d.confirmation_token);
       setSec(300);
@@ -49,24 +49,24 @@ export default function HomePage() {
     }
   };
 
-  const runAgent = async (customGoal?: string) => {
-    const activeGoal = customGoal ?? goal;
+  const runAgent = async (g?: string) => {
+    const active = g ?? goal;
     if (busy || token) return;
     setBusy(true);
     setReceipt(null);
     setShops([]);
-    setGuardrailMsg('');
+    setGuard('');
     setStatus('Evaluating...');
-    log(`=== Autonomous Agent Goal: "${activeGoal}" ===`);
+    log(`=== Autonomous Agent Goal: "${active}" ===`);
     try {
       await discover();
       await wait(400);
-      const q = activeGoal.toLowerCase();
+      const q = active.toLowerCase();
       if (q.includes('car') || q.includes('pizza') || q.includes('flight') || q.includes('hotel')) {
         setStatus('Guardrail Blocked');
-        const msg = `Out-of-Scope Intent: "${activeGoal}" is outside the Bicycle Service domain.`;
-        setGuardrailMsg(msg);
-        setLastJson({ status: 'blocked_by_guardrail', reason: msg });
+        const msg = `Out-of-Scope Intent: "${active}" is outside Bicycle Service domain.`;
+        setGuard(msg);
+        setRaw({ status: 'blocked_by_guardrail', reason: msg });
         log(`Guardrail Blocked: ${msg}`);
         return;
       }
@@ -86,18 +86,18 @@ export default function HomePage() {
   };
 
   const spoofAttack = async () => {
-    setGuardrailMsg('');
+    setGuard('');
     setStatus('Attack Blocked (403)');
     const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: 'forged.sig', human_confirmed: true }) });
     const d = await r.json();
-    setLastJson(d);
+    setRaw(d);
     log(`Security Defense (HTTP ${r.status}): Blocked rogue agent -> "${d.error}"`);
   };
 
   const approve = async () => {
     const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: token, human_confirmed: true }) });
     const d = await r.json();
-    setLastJson(d);
+    setRaw(d);
     setToken('');
     setSec(0);
     if (r.ok) {
@@ -107,12 +107,10 @@ export default function HomePage() {
     }
   };
 
-  const downloadReceipt = () => {
+  const dlReceipt = () => {
     if (!receipt) return;
-    const blob = new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' }));
     a.download = `${receipt.quote_id}.json`;
     a.click();
   };
@@ -120,12 +118,8 @@ export default function HomePage() {
   return (
     <main style={{ maxWidth: '760px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       <div style={{ background: '#0f172a', color: '#fff', padding: '18px', borderRadius: '12px', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-          <h1 style={{ margin: 0, fontSize: '1.35rem' }}>AgentMesh Web Ultra</h1>
-          <span style={{ background: '#334155', padding: '4px 10px', borderRadius: '999px', fontSize: '12px' }}>
-            Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}
-          </span>
-        </div>
+        <h1 style={{ margin: 0, fontSize: '1.35rem' }}>AgentMesh Web Ultra</h1>
+        <p style={{ margin: '6px 0 0', color: '#94a3b8', fontSize: '13px' }}>Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}</p>
       </div>
 
       <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', marginBottom: '14px' }}>
@@ -135,15 +129,15 @@ export default function HomePage() {
           <button onClick={() => runAgent()} disabled={busy || !!token} style={{ padding: '9px 14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>{busy ? 'Working...' : 'Run Agent'}</button>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-          <button onClick={() => { const g = 'Fix my flat tire as cheap as possible'; setGoal(g); runAgent(g); }} disabled={busy || !!token} style={{ fontSize: '11px', padding: '5px 8px', borderRadius: '999px', border: '1px solid #cbd5e1', background: '#f8fafc' }}>Cheapest Tire ($15)</button>
-          <button onClick={() => { const g = 'Urgent hydraulic brake bleed fast'; setGoal(g); runAgent(g); }} disabled={busy || !!token} style={{ fontSize: '11px', padding: '5px 8px', borderRadius: '999px', border: '1px solid #cbd5e1', background: '#f8fafc' }}>Fastest Brake (45m)</button>
-          <button onClick={() => { const g = 'Fix my car showroom at cheapest price'; setGoal(g); runAgent(g); }} disabled={busy || !!token} style={{ fontSize: '11px', padding: '5px 8px', borderRadius: '999px', border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c' }}>Test Car Guardrail</button>
+          <button onClick={() => { setGoal('Fix my flat tire as cheap as possible'); runAgent('Fix my flat tire as cheap as possible'); }} disabled={busy || !!token} style={{ fontSize: '11px', padding: '5px 8px', borderRadius: '999px', border: '1px solid #cbd5e1', background: '#f8fafc' }}>Cheapest Tire ($15)</button>
+          <button onClick={() => { setGoal('Urgent hydraulic brake bleed fast'); runAgent('Urgent hydraulic brake bleed fast'); }} disabled={busy || !!token} style={{ fontSize: '11px', padding: '5px 8px', borderRadius: '999px', border: '1px solid #cbd5e1', background: '#f8fafc' }}>Fastest Brake (45m)</button>
+          <button onClick={() => { setGoal('Fix my car showroom at cheapest price'); runAgent('Fix my car showroom at cheapest price'); }} disabled={busy || !!token} style={{ fontSize: '11px', padding: '5px 8px', borderRadius: '999px', border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c' }}>Test Car Guardrail</button>
         </div>
       </div>
 
-      {guardrailMsg && (
+      {guard && (
         <div style={{ background: '#fef2f2', border: '2px solid #ef4444', padding: '12px', borderRadius: '12px', marginBottom: '14px', color: '#991b1b', fontSize: '13px' }}>
-          <strong>Security Guardrail Triggered:</strong> {guardrailMsg}
+          <strong>Security Guardrail Triggered:</strong> {guard}
         </div>
       )}
 
@@ -166,7 +160,7 @@ export default function HomePage() {
         <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '14px', borderRadius: '12px', marginBottom: '14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ color: '#065f46' }}>Verified Receipt: {receipt.quote_id}</strong>
-            <button onClick={downloadReceipt} style={{ fontSize: '11px', padding: '4px 8px', background: '#059669', color: '#fff', border: 'none', borderRadius: '4px' }}>Download JSON</button>
+            <button onClick={dlReceipt} style={{ fontSize: '11px', padding: '4px 8px', background: '#059669', color: '#fff', border: 'none', borderRadius: '4px' }}>Download JSON</button>
           </div>
           <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#064e3b' }}>{receipt.shop.name} | {receipt.service.name} | ${receipt.service.price} | Proof: {receipt.hmac_proof}</p>
         </div>
@@ -177,3 +171,5 @@ export default function HomePage() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
           <button onClick={discover} style={{ padding: '7px 10px' }}>Discover</button>
           <button onClick={spoofAttack} style={{ padding: '7px 10px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>Spoof Attack</button>
+          <button onClick={() => setShowRaw(!showRaw)} style={{ padding: '7px 10px', background: '#334155', color: '#fff', border: 'none', borderRadius: '6px' }}>{showRaw ? 'Hide JSON' : 'Inspect JSON'}</button>
+
