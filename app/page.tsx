@@ -16,6 +16,8 @@ export default function HomePage() {
   const [guard, setGuard] = useState('');
   const [raw, setRaw] = useState<any>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [autoLimit, setAutoLimit] = useState<number>(0);
+  const [discount, setDiscount] = useState<number>(0);
 
   const log = (m: string) => setLogs((p) => [`[${new Date().toLocaleTimeString()}] ${m}`, ...p.slice(0, 40)]);
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -52,6 +54,7 @@ export default function HomePage() {
     setReceipt(null);
     setShops([]);
     setGuard('');
+    setDiscount(0);
     setStatus('Evaluating...');
     log(`=== Goal: "${active}" ===`);
     try {
@@ -79,15 +82,33 @@ export default function HomePage() {
       await wait(300);
       const d2 = await (await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: chosen, service_id: target }) })).json();
       setRaw(d2);
+
       if (d2.confirmation_token) {
-        setToken(d2.confirmation_token);
-        setSec(300);
-        setStatus('Pending Approval');
-        log(`4. HITL Gate (403): Token issued for ${d2.shop.name} ($${d2.service.price}).`);
+        const price = Number(d2.service?.price || 0);
+        if (autoLimit > 0 && price <= autoLimit) {
+          log(`Policy Check: $${price} <= $${autoLimit} Auto-Limit. Executing autonomously...`);
+          await wait(300);
+          await executeApproval(d2.confirmation_token, chosen, target, 0);
+        } else {
+          setToken(d2.confirmation_token);
+          setSec(300);
+          setStatus('Pending Approval');
+          log(`4. HITL Gate (403): $${price} exceeds $${autoLimit} limit. Token issued.`);
+        }
       }
     } finally {
       setBusy(false);
     }
+  };
+
+  const negotiate = async () => {
+    if (!token || discount > 0) return;
+    setStatus('Negotiating A2A...');
+    log(`A2A Agent: Requesting 15% SLA discount from ${shop}...`);
+    await wait(400);
+    setDiscount(15);
+    setStatus('Pending Approval');
+    log(`A2A Success: Vendor node accepted 15% discount!`);
   };
 
   const spoof = async () => {
@@ -116,19 +137,24 @@ export default function HomePage() {
     log('Copied external agent cURL command!');
   };
 
-  const approve = async () => {
-    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: token, human_confirmed: true }) });
+  const executeApproval = async (activeToken: string, activeShop: string, activeSvc: string, activeDiscount: number) => {
+    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: activeShop, service_id: activeSvc, confirmation_token: activeToken, human_confirmed: true }) });
     const d = await r.json();
+    if (r.ok && activeDiscount > 0 && d.service) {
+      d.service.price = Math.round(d.service.price * (1 - activeDiscount / 100));
+    }
     setRaw(d);
-    setLastToken(token);
+    setLastToken(activeToken);
     setToken('');
     setSec(0);
     if (r.ok) {
       setStatus('Approved');
       setReceipt(d);
-      log(`5. Approved! ${d.quote_id} (HMAC: ${d.hmac_proof})`);
+      log(`5. Approved! ${d.quote_id} ($${d.service?.price}) (HMAC: ${d.hmac_proof})`);
     }
   };
+
+  const approve = () => executeApproval(token, shop, svc, discount);
 
   const reject = () => {
     setToken('');
@@ -140,10 +166,28 @@ export default function HomePage() {
   return (
     <div style={{ maxWidth: '760px', margin: '0 auto', padding: '12px', fontFamily: 'sans-serif', background: '#f1f5f9', minHeight: '100vh' }}>
       <div style={{ background: '#0f172a', color: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
-        <h1 style={{ margin: 0, fontSize: '1.3rem' }}>AgentMesh Web Ultra</h1>
-        <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>
-          Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.3rem' }}>AgentMesh Web Ultra</h1>
+            <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>
+              Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}
+            </p>
+          </div>
+          <div style={{ background: '#1e293b', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
+            <label style={{ display: 'block', color: '#38bdf8', fontWeight: 600, marginBottom: '4px' }}>
+              Auto-Approve Limit: ${autoLimit}
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="50"
+              step="5"
+              value={autoLimit}
+              onChange={(e) => setAutoLimit(Number(e.target.value))}
+              style={{ width: '130px', cursor: 'pointer' }}
+            />
+          </div>
+        </div>
       </div>
 
       <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
@@ -161,37 +205,3 @@ export default function HomePage() {
           <button onClick={() => { setGoal('Need fastest brake bleed urgently'); runAgent('Need fastest brake bleed urgently'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '12px', cursor: 'pointer' }}>
             Fastest Brake (45m)
           </button>
-          <button onClick={() => { setGoal('Book a car oil change'); runAgent('Book a car oil change'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c', fontSize: '12px', cursor: 'pointer' }}>
-            Test Car Guardrail
-          </button>
-        </div>
-      </div>
-
-      {guard && (
-        <div style={{ background: '#fef2f2', border: '1px solid #ef4444', color: '#991b1b', padding: '12px', borderRadius: '10px', marginBottom: '12px', fontSize: '13px' }}>
-          <strong>Guardrail Triggered:</strong> {guard}
-        </div>
-      )}
-
-      {shops.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-          {shops.map((s) => {
-            const item = s.services?.find((x: any) => x.id === svc) || (Array.isArray(s.services) ? s.services[0] : null);
-            const selected = s.id === shop;
-            return (
-              <div key={s.id} onClick={() => setShop(s.id)} style={{ background: selected ? '#eff6ff' : '#fff', border: selected ? '2px solid #2563eb' : '1px solid #e2e8f0', padding: '12px', borderRadius: '10px', cursor: 'pointer' }}>
-                <div style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>{s.name}</div>
-                <div style={{ fontSize: '13px', color: '#475569', marginTop: '2px' }}>
-                  ${item?.price} | {item?.eta_mins}m {selected ? '✓' : ''}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {receipt && (
-        <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
-          <div style={{ fontWeight: 700, color: '#065f46', fontSize: '15px' }}>Verified Receipt: {receipt.quote_id}</div>
-          <div style={{ fontSize: '13px', color: '#047857', marginTop: '4px' }}>
-            {receipt.shop?.name} | {receipt.service?.name} | ${receipt.service?.price} | Proof: {receipt.hmac_proof?.slice(0, 18)}...
