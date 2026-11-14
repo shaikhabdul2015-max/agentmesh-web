@@ -43,11 +43,7 @@ export default function HomePage() {
   };
 
   const executeApprove = async (tk: string, sh: string, sv: string) => {
-    const r = await fetch('/api/agent/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true }),
-    });
+    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true }) });
     const d = await r.json();
     setRaw(d);
     setLastToken(tk);
@@ -115,11 +111,7 @@ export default function HomePage() {
   const negotiate = async () => {
     if (!token || disc > 0) return;
     log('A2A Agent: Negotiating 15% discount with server...');
-    const r = await fetch('/api/agent/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, discount_percent: 15 }),
-    });
+    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, discount_percent: 15 }) });
     const d = await r.json();
     setRaw(d);
     if (d.confirmation_token) {
@@ -154,9 +146,7 @@ export default function HomePage() {
       <div style={{ background: '#0f172a', color: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.3rem' }}>AgentMesh Web Ultra</h1>
-          <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>
-            Status: <strong>{status}</strong> {token ? '(' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + ')' : ''}
-          </p>
+          <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>Status: <strong>{status}</strong> {token ? '(' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + ')' : ''}</p>
         </div>
         <div style={{ background: '#1e293b', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
           <div style={{ color: '#38bdf8', fontWeight: 600 }}>Auto-Approve Limit: ${limit}</div>
@@ -167,9 +157,7 @@ export default function HomePage() {
       <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
           <input value={goal} onChange={(e) => setGoal(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
-          <button onClick={() => runAgent()} disabled={busy || Boolean(token)} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600 }}>
-            Run Agent
-          </button>
+          <button onClick={() => runAgent()} disabled={busy || Boolean(token)} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600 }}>Run Agent</button>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
           <button onClick={() => { setGoal('Fix my flat tire as cheap as possible'); runAgent('Fix my flat tire as cheap as possible'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '12px' }}>Cheapest Tire ($15)</button>
@@ -184,11 +172,17 @@ export default function HomePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
           {shops.map((s) => {
             const list = Array.isArray(s.services) ? s.services : [];
-            const item = list.find((x: any) => x.id === svc) || list;
-            const sel = s.shop_id === shop || s.id === shop;
+            const item = list.find((x: any) => x.id === svc) || list[0];
             const id = s.shop_id || s.id;
             const name = s.shop_name || s.name;
+            const sel = id === shop;
             const p = sel && disc > 0 ? Math.round((item?.price || 0) * 0.85) : item?.price;
             return (
               <div key={id} onClick={() => setShop(id)} style={{ background: sel ? '#eff6ff' : '#fff', border: sel ? '2px solid #2563eb' : '1px solid #e2e8f0', padding: '12px', borderRadius: '10px' }}>
                 <div style={{ fontWeight: 700, fontSize: '14px' }}>{name}</div>
+                <div style={{ fontSize: '13px', color: '#475569' }}>${p} {sel && disc > 0 ? '(15% off)' : ''} | {item?.eta_mins}m {sel ? '✓' : ''}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
