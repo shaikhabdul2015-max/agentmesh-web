@@ -31,7 +31,7 @@ export default function HomePage() {
   const discover = async () => {
     const d = await (await fetch('/.well-known/agent.json')).json();
     setRaw(d);
-    log(`1. Manifest: ${d.name}`);
+    log('1. Manifest: ' + d.name);
   };
 
   const inspectFile = async (path: string) => {
@@ -39,7 +39,28 @@ export default function HomePage() {
     const data = r.headers.get('content-type')?.includes('application/json') ? await r.json() : { file: path, content: await r.text() };
     setRaw(data);
     setShowRaw(true);
-    log(`Standard Loaded: ${path} (${r.status})`);
+    log('Standard Loaded: ' + path);
+  };
+
+  const executeApprove = async (tk: string, sh: string, sv: string, ds: number) => {
+    const r = await fetch('/api/agent/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true }),
+    });
+    const d = await r.json();
+    if (r.ok && ds > 0 && d.service) {
+      d.service.price = Math.round(d.service.price * (1 - ds / 100));
+    }
+    setRaw(d);
+    setLastToken(tk);
+    setToken('');
+    setSec(0);
+    if (r.ok) {
+      setStatus('Approved');
+      setReceipt(d);
+      log('5. Approved! ' + d.quote_id + ' (HMAC: ' + d.hmac_proof + ')');
+    }
   };
 
   const runAgent = async (g?: string) => {
@@ -51,70 +72,47 @@ export default function HomePage() {
     setGuard('');
     setDisc(0);
     setStatus('Evaluating...');
-    log(`=== Goal: "${active}" ===`);
+    log('=== Goal: "' + active + '" ===');
     try {
       await discover();
       await wait(250);
       const q = active.toLowerCase();
       if (q.includes('car') || q.includes('pizza') || q.includes('flight') || q.includes('hotel')) {
         setStatus('Guardrail Blocked');
-        const msg = `Out-of-Scope: "${active}" is not a bicycle repair request.`;
+        const msg = 'Out-of-Scope: "' + active + '" is not a bicycle repair request.';
         setGuard(msg);
         setRaw({ status: 'blocked', reason: msg });
-        log(`Guardrail: ${msg}`);
+        log('Guardrail: ' + msg);
         return;
       }
       const d1 = await (await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list_services' }) })).json();
       setShops(d1.shops || []);
-      log(`2. Scanned ${(d1.shops || []).length} bicycle nodes.`);
+      log('2. Scanned bicycle nodes.');
       await wait(250);
-      const target = q.includes('tire') || q.includes('flat') || q.includes('puncture') ? 'flat-tire' : q.includes('brake') || q.includes('bleed') ? 'brake-bleed' : 'tune-up';
-      const fast = q.includes('fast') || q.includes('urgent') || q.includes('quick');
+      const target = q.includes('tire') || q.includes('flat') ? 'flat-tire' : q.includes('brake') ? 'brake-bleed' : 'tune-up';
+      const fast = q.includes('fast') || q.includes('urgent');
       const chosen = fast ? 'velofix-hub' : 'budget-pedal';
       setShop(chosen);
       setSvc(target);
-      log(`3. Picked "${chosen}" (${fast ? 'Fastest' : 'Cheapest'}) for "${target}".`);
+      log('3. Picked ' + chosen + ' for ' + target);
       await wait(250);
       const d2 = await (await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: chosen, service_id: target }) })).json();
       setRaw(d2);
       if (d2.confirmation_token) {
         const price = Number(d2.service?.price || 0);
         if (limit > 0 && price <= limit) {
-          log(`Auto-Policy: $${price} <= $${limit} limit. Auto-approving...`);
+          log('Auto-Policy: Price within limit. Auto-approving...');
           await executeApprove(d2.confirmation_token, chosen, target, 0);
         } else {
           setToken(d2.confirmation_token);
           setSec(300);
           setStatus('Pending Approval');
-          log(`4. HITL Gate (403): $${price} > $${limit} limit. Token issued.`);
+          log('4. HITL Gate (403): Token issued for ' + d2.shop.name);
         }
       }
     } finally {
       setBusy(false);
     }
-  };
-
-  const executeApprove = async (tk: string, sh: string, sv: string, ds: number) => {
-    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true }) });
-    const d = await r.json();
-    if (r.ok && ds > 0 && d.service) d.service.price = Math.round(d.service.price * (1 - ds / 100));
-    setRaw(d);
-    setLastToken(tk);
-    setToken('');
-    setSec(0);
-    if (r.ok) {
-      setStatus('Approved');
-      setReceipt(d);
-      log(`5. Approved! ${d.quote_id} ($${d.service?.price}) (HMAC: ${d.hmac_proof})`);
-    }
-  };
-
-  const negotiate = async () => {
-    if (!token || disc > 0) return;
-    log(`A2A Agent: Negotiating 15% discount with ${shop}...`);
-    await wait(300);
-    setDisc(15);
-    log(`A2A Deal: 15% discount applied!`);
   };
 
   const spoof = async () => {
@@ -123,7 +121,7 @@ export default function HomePage() {
     const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: 'forged.sig', human_confirmed: true }) });
     const d = await r.json();
     setRaw(d);
-    log(`Security (HTTP ${r.status}): Blocked rogue agent -> "${d.error}"`);
+    log('Security (403): Blocked rogue agent');
   };
 
   const replay = async () => {
@@ -133,7 +131,7 @@ export default function HomePage() {
     const d = await r.json();
     setRaw(d);
     setShowRaw(true);
-    log(`Replay Guard (${r.status}): ${d.error || 'Token already consumed'}`);
+    log('Replay Guard (' + r.status + '): Blocked reused token');
   };
 
   return (
@@ -142,7 +140,7 @@ export default function HomePage() {
         <div>
           <h1 style={{ margin: 0, fontSize: '1.3rem' }}>AgentMesh Web Ultra</h1>
           <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>
-            Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}
+            Status: <strong>{status}</strong> {token ? '(' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + ')' : ''}
           </p>
         </div>
         <div style={{ background: '#1e293b', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
@@ -154,7 +152,7 @@ export default function HomePage() {
       <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
           <input value={goal} onChange={(e) => setGoal(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
-          <button onClick={() => runAgent()} disabled={busy || !!token} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600 }}>
+          <button onClick={() => runAgent()} disabled={busy || Boolean(token)} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600 }}>
             Run Agent
           </button>
         </div>
@@ -186,3 +184,9 @@ export default function HomePage() {
 
       {receipt && (
         <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
+          <div style={{ fontWeight: 700, color: '#065f46', fontSize: '15px' }}>Verified Receipt: {receipt.quote_id}</div>
+          <div style={{ fontSize: '13px', color: '#047857', marginTop: '4px' }}>{receipt.shop?.name} | {receipt.service?.name} | ${receipt.service?.price}</div>
+        </div>
+      )}
+
+      <div style={{ background: '#fff', padding: '14px', borderRadius: '12px' }}>
