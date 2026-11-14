@@ -5,6 +5,7 @@ export default function HomePage() {
   const [logs, setLogs] = useState<string[]>(['AgentMesh Ultra ready.']);
   const [goal, setGoal] = useState('Fix my flat tire as cheap as possible');
   const [token, setToken] = useState('');
+  const [lastUsedToken, setLastUsedToken] = useState('');
   const [sec, setSec] = useState(0);
   const [shop, setShop] = useState('budget-pedal');
   const [svc, setSvc] = useState('flat-tire');
@@ -29,6 +30,20 @@ export default function HomePage() {
     const d = await (await fetch('/.well-known/agent.json')).json();
     setRaw(d);
     log(`1. Manifest: ${d.name}`);
+  };
+
+  // Step 1: Open Web Standards Live Inspector
+  const inspectFile = async (path: string) => {
+    try {
+      const r = await fetch(path);
+      const isJson = r.headers.get('content-type')?.includes('application/json');
+      const data = isJson ? await r.json() : { file: path, content: await r.text() };
+      setRaw(data);
+      setShowRaw(true);
+      log(`Discovery: Loaded ${path} (HTTP ${r.status})`);
+    } catch {
+      log(`Discovery Error: Could not load ${path}`);
+    }
   };
 
   const runAgent = async (g?: string) => {
@@ -85,10 +100,30 @@ export default function HomePage() {
     log(`Security (HTTP ${r.status}): Blocked rogue agent -> "${d.error}"`);
   };
 
+  // Step 2: Replay Attack Simulation
+  const replayAttack = async () => {
+    if (!lastUsedToken) return;
+    setStatus('Replay Blocked');
+    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: lastUsedToken, human_confirmed: true }) });
+    const d = await r.json();
+    setRaw(d);
+    setShowRaw(true);
+    log(`Replay Defense (HTTP ${r.status}): ${d.error || 'Token already consumed / invalid'}`);
+  };
+
+  // Step 3: Copy External Agent cURL
+  const copyCurl = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vercel.app';
+    const cmd = `curl -X POST ${origin}/api/agent/execute -H "Content-Type: application/json" -d '{"action":"request_quote","shop_id":"${shop}","service_id":"${svc}"}'`;
+    navigator.clipboard.writeText(cmd);
+    log(`Copied external agent cURL command to clipboard!`);
+  };
+
   const approve = async () => {
     const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: token, human_confirmed: true }) });
     const d = await r.json();
     setRaw(d);
+    setLastUsedToken(token);
     setToken('');
     setSec(0);
     if (r.ok) {
@@ -98,36 +133,78 @@ export default function HomePage() {
     }
   };
 
+  const reject = () => {
+    setToken('');
+    setSec(0);
+    setStatus('Rejected by Human');
+    log('Human rejected the quote request.');
+  };
+
   return (
-    <main style={{ maxWidth: '760px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <main style={{ maxWidth: '760px', margin: '0 auto', padding: '12px', fontFamily: 'sans-serif', background: '#f1f5f9', minHeight: '100vh' }}>
       <div style={{ background: '#0f172a', color: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
         <h1 style={{ margin: 0, fontSize: '1.3rem' }}>AgentMesh Web Ultra</h1>
-        <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}</p>
+        <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>
+          Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}
+        </p>
       </div>
 
-      <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
-          <input value={goal} onChange={(e) => setGoal(e.target.value)} disabled={busy || !!token} style={{ flex: '1 1 200px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-          <button onClick={() => runAgent()} disabled={busy || !!token} style={{ padding: '8px 14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>{busy ? 'Working...' : 'Run Agent'}</button>
+      <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', marginBottom: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+          <input
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+            style={{ flex: 1, minWidth: '200px', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+          />
+          <button
+            onClick={() => runAgent()}
+            disabled={busy || !!token}
+            style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Run Agent
+          </button>
         </div>
+
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-          <button onClick={() => { setGoal('Fix my flat tire as cheap as possible'); runAgent('Fix my flat tire as cheap as possible'); }} disabled={busy || !!token} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '999px', border: '1px solid #cbd5e1' }}>Cheapest Tire ($15)</button>
-          <button onClick={() => { setGoal('Urgent hydraulic brake bleed fast'); runAgent('Urgent hydraulic brake bleed fast'); }} disabled={busy || !!token} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '999px', border: '1px solid #cbd5e1' }}>Fastest Brake (45m)</button>
-          <button onClick={() => { setGoal('Fix my car showroom at cheapest price'); runAgent('Fix my car showroom at cheapest price'); }} disabled={busy || !!token} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '999px', border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c' }}>Test Car Guardrail</button>
+          <button onClick={() => { setGoal('Fix my flat tire as cheap as possible'); runAgent('Fix my flat tire as cheap as possible'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '12px', cursor: 'pointer' }}>
+            Cheapest Tire ($15)
+          </button>
+          <button onClick={() => { setGoal('Need fastest brake bleed urgently'); runAgent('Need fastest brake bleed urgently'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '12px', cursor: 'pointer' }}>
+            Fastest Brake (45m)
+          </button>
+          <button onClick={() => { setGoal('Book a car oil change'); runAgent('Book a car oil change'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c', fontSize: '12px', cursor: 'pointer' }}>
+            Test Car Guardrail
+          </button>
         </div>
       </div>
 
-      {guard && <div style={{ background: '#fef2f2', border: '2px solid #ef4444', padding: '10px', borderRadius: '10px', marginBottom: '12px', color: '#991b1b', fontSize: '13px' }}><strong>Guardrail Blocked:</strong> {guard}</div>}
+      {guard && (
+        <div style={{ background: '#fef2f2', border: '1px solid #ef4444', color: '#991b1b', padding: '12px', borderRadius: '10px', marginBottom: '12px', fontSize: '13px' }}>
+          <strong>Guardrail Triggered:</strong> {guard}
+        </div>
+      )}
 
       {shops.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', marginBottom: '12px' }}>
-          {shops.map((it) => {
-            const sInfo = it.services.find((x: any) => x.id === svc) || it.services.at(0);
-            const active = it.shop_id === shop;
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+          {shops.map((s) => {
+            const item = s.services?.find((x: any) => x.id === svc) || s.services?.[0];
+            const selected = s.id === shop;
             return (
-              <div key={it.shop_id} style={{ background: active ? '#eff6ff' : '#fff', border: active ? '2px solid #2563eb' : '1px solid #cbd5e1', padding: '10px', borderRadius: '8px' }}>
-                <strong style={{ fontSize: '13px' }}>{it.shop_name}</strong>
-                <div style={{ fontSize: '12px', color: '#475569' }}>${sInfo.price} | {sInfo.eta_mins}m {active ? '✓' : ''}</div>
+              <div
+                key={s.id}
+                onClick={() => setShop(s.id)}
+                style={{
+                  background: selected ? '#eff6ff' : '#fff',
+                  border: selected ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  cursor: 'pointer'
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>{s.name}</div>
+                <div style={{ fontSize: '13px', color: '#475569', marginTop: '2px' }}>
+                  ${item?.price} | {item?.eta_mins}m {selected ? '✓' : ''}
+                </div>
               </div>
             );
           })}
@@ -135,25 +212,3 @@ export default function HomePage() {
       )}
 
       {receipt && (
-        <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '12px', borderRadius: '10px', marginBottom: '12px' }}>
-          <strong style={{ color: '#065f46' }}>Verified Receipt: {receipt.quote_id}</strong>
-          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#064e3b' }}>{receipt.shop.name} | {receipt.service.name} | ${receipt.service.price} | Proof: {receipt.hmac_proof}</p>
-        </div>
-      )}
-
-      <div style={{ background: '#fff', padding: '14px', borderRadius: '12px' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-          <button onClick={discover} style={{ padding: '7px 10px' }}>Discover</button>
-          <button onClick={spoof} style={{ padding: '7px 10px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>Spoof Attack</button>
-          <button onClick={() => setShowRaw(!showRaw)} style={{ padding: '7px 10px', background: '#334155', color: '#fff', border: 'none', borderRadius: '6px' }}>{showRaw ? 'Hide JSON' : 'Inspect JSON'}</button>
-          <button onClick={approve} disabled={!token} style={{ padding: '7px 12px', background: token ? '#16a34a' : '#ccc', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>Human Approve</button>
-          {token && <button onClick={() => { setToken(''); setSec(0); setStatus('Rejected'); log('5. Rejected.'); }} style={{ padding: '7px 10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>Reject</button>}
-        </div>
-        {showRaw && raw && <pre style={{ background: '#1e293b', color: '#a7f3d0', padding: '8px', borderRadius: '6px', fontSize: '11px', overflowX: 'auto' }}>{JSON.stringify(raw, null, 2)}</pre>}
-        <div style={{ background: '#0f172a', color: '#38bdf8', padding: '10px', borderRadius: '8px', fontFamily: 'monospace', fontSize: '11px', maxHeight: '190px', overflowY: 'auto' }}>
-          {logs.map((l, i) => <div key={i} style={{ marginBottom: '4px' }}>{l}</div>)}
-        </div>
-      </div>
-    </main>
-  );
-}
