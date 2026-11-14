@@ -138,7 +138,7 @@ export default function HomePage() {
   };
 
   return (
-    <main style={{ maxWidth: '760px', margin: '0 auto', padding: '12px', fontFamily: 'sans-serif', background: '#f1f5f9', minHeight: '100vh' }}>
+    <div style={{ maxWidth: '760px', margin: '0 auto', padding: '12px', fontFamily: 'sans-serif', background: '#f1f5f9', minHeight: '100vh' }}>
       <div style={{ background: '#0f172a', color: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
         <h1 style={{ margin: 0, fontSize: '1.3rem' }}>AgentMesh Web Ultra</h1>
         <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>
@@ -176,7 +176,7 @@ export default function HomePage() {
       {shops.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
           {shops.map((s) => {
-            const item = s.services?.find((x: any) => x.id === svc) || (s.services && s.services);
+            const item = s.services?.find((x: any) => x.id === svc) || (Array.isArray(s.services) ? s.services[0] : null);
             const selected = s.id === shop;
             return (
               <div key={s.id} onClick={() => setShop(s.id)} style={{ background: selected ? '#eff6ff' : '#fff', border: selected ? '2px solid #2563eb' : '1px solid #e2e8f0', padding: '12px', borderRadius: '10px', cursor: 'pointer' }}>
@@ -195,7 +195,3 @@ export default function HomePage() {
           <div style={{ fontWeight: 700, color: '#065f46', fontSize: '15px' }}>Verified Receipt: {receipt.quote_id}</div>
           <div style={{ fontSize: '13px', color: '#047857', marginTop: '4px' }}>
             {receipt.shop?.name} | {receipt.service?.name} | ${receipt.service?.price} | Proof: {receipt.hmac_proof?.slice(0, 18)}...
-          </div>
-        </div>
-      )}
-
