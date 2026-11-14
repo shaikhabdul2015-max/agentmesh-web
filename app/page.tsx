@@ -19,7 +19,7 @@ export default function HomePage() {
   const [limit, setLimit] = useState(0);
   const [disc, setDisc] = useState(0);
 
-  const log = (m: string) => setLogs((p) => [`[${new Date().toLocaleTimeString()}] ${m}`, ...p.slice(0, 40)]);
+  const log = (m: string) => setLogs((p) => ['[' + new Date().toLocaleTimeString() + '] ' + m, ...p.slice(0, 40)]);
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   useEffect(() => {
@@ -42,16 +42,13 @@ export default function HomePage() {
     log('Standard Loaded: ' + path);
   };
 
-  const executeApprove = async (tk: string, sh: string, sv: string, ds: number) => {
+  const executeApprove = async (tk: string, sh: string, sv: string) => {
     const r = await fetch('/api/agent/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true }),
     });
     const d = await r.json();
-    if (r.ok && ds > 0 && d.service) {
-      d.service.price = Math.round(d.service.price * (1 - ds / 100));
-    }
     setRaw(d);
     setLastToken(tk);
     setToken('');
@@ -59,7 +56,7 @@ export default function HomePage() {
     if (r.ok) {
       setStatus('Approved');
       setReceipt(d);
-      log('5. Approved! ' + d.quote_id + ' (HMAC: ' + d.hmac_proof + ')');
+      log('5. Approved! ' + d.quote_id + ' ($' + d.service?.price + ') HMAC: ' + d.hmac_proof);
     }
   };
 
@@ -102,7 +99,7 @@ export default function HomePage() {
         const price = Number(d2.service?.price || 0);
         if (limit > 0 && price <= limit) {
           log('Auto-Policy: Price within limit. Auto-approving...');
-          await executeApprove(d2.confirmation_token, chosen, target, 0);
+          await executeApprove(d2.confirmation_token, chosen, target);
         } else {
           setToken(d2.confirmation_token);
           setSec(300);
@@ -112,6 +109,24 @@ export default function HomePage() {
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const negotiate = async () => {
+    if (!token || disc > 0) return;
+    log('A2A Agent: Negotiating 15% discount with server...');
+    const r = await fetch('/api/agent/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, discount_percent: 15 }),
+    });
+    const d = await r.json();
+    setRaw(d);
+    if (d.confirmation_token) {
+      setToken(d.confirmation_token);
+      setSec(300);
+      setDisc(15);
+      log('A2A Deal: Server signed new 15% discounted token ($' + d.service?.price + ')!');
     }
   };
 
@@ -126,12 +141,12 @@ export default function HomePage() {
 
   const replay = async () => {
     if (!lastToken) return;
-    setStatus('Replay Blocked');
+    setStatus('Replay Blocked (409)');
     const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: lastToken, human_confirmed: true }) });
     const d = await r.json();
     setRaw(d);
     setShowRaw(true);
-    log('Replay Guard (' + r.status + '): Blocked reused token');
+    log('Replay Guard (HTTP ' + r.status + '): ' + (d.error || 'Blocked reused token'));
   };
 
   return (
@@ -169,24 +184,11 @@ export default function HomePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
           {shops.map((s) => {
             const list = Array.isArray(s.services) ? s.services : [];
-            const item = list.find((x: any) => x.id === svc) || list[0];
-            const sel = s.id === shop;
+            const item = list.find((x: any) => x.id === svc) || list;
+            const sel = s.shop_id === shop || s.id === shop;
+            const id = s.shop_id || s.id;
+            const name = s.shop_name || s.name;
             const p = sel && disc > 0 ? Math.round((item?.price || 0) * 0.85) : item?.price;
             return (
-              <div key={s.id} onClick={() => setShop(s.id)} style={{ background: sel ? '#eff6ff' : '#fff', border: sel ? '2px solid #2563eb' : '1px solid #e2e8f0', padding: '12px', borderRadius: '10px' }}>
-                <div style={{ fontWeight: 700, fontSize: '14px' }}>{s.name}</div>
-                <div style={{ fontSize: '13px', color: '#475569' }}>${p} {sel && disc > 0 ? '(15% off)' : ''} | {item?.eta_mins}m {sel ? '✓' : ''}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {receipt && (
-        <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
-          <div style={{ fontWeight: 700, color: '#065f46', fontSize: '15px' }}>Verified Receipt: {receipt.quote_id}</div>
-          <div style={{ fontSize: '13px', color: '#047857', marginTop: '4px' }}>{receipt.shop?.name} | {receipt.service?.name} | ${receipt.service?.price}</div>
-        </div>
-      )}
-
-      <div style={{ background: '#fff', padding: '14px', borderRadius: '12px' }}>
+              <div key={id} onClick={() => setShop(id)} style={{ background: sel ? '#eff6ff' : '#fff', border: sel ? '2px solid #2563eb' : '1px solid #e2e8f0', padding: '12px', borderRadius: '10px' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px' }}>{name}</div>
