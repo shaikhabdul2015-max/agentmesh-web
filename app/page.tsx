@@ -32,7 +32,6 @@ export default function HomePage() {
     log(`1. Manifest: ${d.name}`);
   };
 
-  // Step 1: Open Web Standards Live Inspector
   const inspectFile = async (path: string) => {
     try {
       const r = await fetch(path);
@@ -100,7 +99,6 @@ export default function HomePage() {
     log(`Security (HTTP ${r.status}): Blocked rogue agent -> "${d.error}"`);
   };
 
-  // Step 2: Replay Attack Simulation
   const replayAttack = async () => {
     if (!lastUsedToken) return;
     setStatus('Replay Blocked');
@@ -111,7 +109,6 @@ export default function HomePage() {
     log(`Replay Defense (HTTP ${r.status}): ${d.error || 'Token already consumed / invalid'}`);
   };
 
-  // Step 3: Copy External Agent cURL
   const copyCurl = () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vercel.app';
     const cmd = `curl -X POST ${origin}/api/agent/execute -H "Content-Type: application/json" -d '{"action":"request_quote","shop_id":"${shop}","service_id":"${svc}"}'`;
@@ -187,7 +184,7 @@ export default function HomePage() {
       {shops.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
           {shops.map((s) => {
-            const item = s.services?.find((x: any) => x.id === svc) || s.services?.[0];
+            const item = s.services?.find((x: any) => x.id === svc) || (s.services && s.services[0]);
             const selected = s.id === shop;
             return (
               <div
@@ -212,3 +209,4 @@ export default function HomePage() {
       )}
 
       {receipt && (
+        <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
