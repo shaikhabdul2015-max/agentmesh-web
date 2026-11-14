@@ -184,7 +184,7 @@ export default function HomePage() {
       {shops.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
           {shops.map((s) => {
-            const item = s.services?.find((x: any) => x.id === svc) || (s.services && s.services[0]);
+            const item = s.services?.find((x: any) => x.id === svc) || (s.services && s.services);
             const selected = s.id === shop;
             return (
               <div
