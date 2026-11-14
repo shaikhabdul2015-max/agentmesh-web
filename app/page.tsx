@@ -5,7 +5,7 @@ export default function HomePage() {
   const [logs, setLogs] = useState<string[]>(['AgentMesh Ultra ready.']);
   const [goal, setGoal] = useState('Fix my flat tire as cheap as possible');
   const [token, setToken] = useState('');
-  const [lastUsedToken, setLastUsedToken] = useState('');
+  const [lastToken, setLastToken] = useState('');
   const [sec, setSec] = useState(0);
   const [shop, setShop] = useState('budget-pedal');
   const [svc, setSvc] = useState('flat-tire');
@@ -41,7 +41,7 @@ export default function HomePage() {
       setShowRaw(true);
       log(`Discovery: Loaded ${path} (HTTP ${r.status})`);
     } catch {
-      log(`Discovery Error: Could not load ${path}`);
+      log(`Failed to load ${path}`);
     }
   };
 
@@ -100,27 +100,27 @@ export default function HomePage() {
   };
 
   const replayAttack = async () => {
-    if (!lastUsedToken) return;
+    if (!lastToken) return;
     setStatus('Replay Blocked');
-    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: lastUsedToken, human_confirmed: true }) });
+    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: lastToken, human_confirmed: true }) });
     const d = await r.json();
     setRaw(d);
     setShowRaw(true);
-    log(`Replay Defense (HTTP ${r.status}): ${d.error || 'Token already consumed / invalid'}`);
+    log(`Replay Defense (HTTP ${r.status}): ${d.error || 'Token already consumed'}`);
   };
 
   const copyCurl = () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vercel.app';
     const cmd = `curl -X POST ${origin}/api/agent/execute -H "Content-Type: application/json" -d '{"action":"request_quote","shop_id":"${shop}","service_id":"${svc}"}'`;
     navigator.clipboard.writeText(cmd);
-    log(`Copied external agent cURL command to clipboard!`);
+    log('Copied external agent cURL command!');
   };
 
   const approve = async () => {
     const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: token, human_confirmed: true }) });
     const d = await r.json();
     setRaw(d);
-    setLastUsedToken(token);
+    setLastToken(token);
     setToken('');
     setSec(0);
     if (r.ok) {
@@ -133,8 +133,8 @@ export default function HomePage() {
   const reject = () => {
     setToken('');
     setSec(0);
-    setStatus('Rejected by Human');
-    log('Human rejected the quote request.');
+    setStatus('Rejected');
+    log('Human rejected the quote.');
   };
 
   return (
@@ -146,18 +146,10 @@ export default function HomePage() {
         </p>
       </div>
 
-      <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', marginBottom: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+      <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
-          <input
-            value={goal}
-            onChange={(e) => setGoal(e.target.value)}
-            style={{ flex: 1, minWidth: '200px', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
-          />
-          <button
-            onClick={() => runAgent()}
-            disabled={busy || !!token}
-            style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer' }}
-          >
+          <input value={goal} onChange={(e) => setGoal(e.target.value)} style={{ flex: 1, minWidth: '200px', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
+          <button onClick={() => runAgent()} disabled={busy || !!token} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
             Run Agent
           </button>
         </div>
@@ -187,17 +179,7 @@ export default function HomePage() {
             const item = s.services?.find((x: any) => x.id === svc) || (s.services && s.services);
             const selected = s.id === shop;
             return (
-              <div
-                key={s.id}
-                onClick={() => setShop(s.id)}
-                style={{
-                  background: selected ? '#eff6ff' : '#fff',
-                  border: selected ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                  padding: '12px',
-                  borderRadius: '10px',
-                  cursor: 'pointer'
-                }}
-              >
+              <div key={s.id} onClick={() => setShop(s.id)} style={{ background: selected ? '#eff6ff' : '#fff', border: selected ? '2px solid #2563eb' : '1px solid #e2e8f0', padding: '12px', borderRadius: '10px', cursor: 'pointer' }}>
                 <div style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>{s.name}</div>
                 <div style={{ fontSize: '13px', color: '#475569', marginTop: '2px' }}>
                   ${item?.price} | {item?.eta_mins}m {selected ? '✓' : ''}
@@ -210,3 +192,10 @@ export default function HomePage() {
 
       {receipt && (
         <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
+          <div style={{ fontWeight: 700, color: '#065f46', fontSize: '15px' }}>Verified Receipt: {receipt.quote_id}</div>
+          <div style={{ fontSize: '13px', color: '#047857', marginTop: '4px' }}>
+            {receipt.shop?.name} | {receipt.service?.name} | ${receipt.service?.price} | Proof: {receipt.hmac_proof?.slice(0, 18)}...
+          </div>
+        </div>
+      )}
+
