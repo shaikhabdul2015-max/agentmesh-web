@@ -16,8 +16,8 @@ export default function HomePage() {
   const [guard, setGuard] = useState('');
   const [raw, setRaw] = useState<any>(null);
   const [showRaw, setShowRaw] = useState(false);
-  const [autoLimit, setAutoLimit] = useState<number>(0);
-  const [discount, setDiscount] = useState<number>(0);
+  const [limit, setLimit] = useState(0);
+  const [disc, setDisc] = useState(0);
 
   const log = (m: string) => setLogs((p) => [`[${new Date().toLocaleTimeString()}] ${m}`, ...p.slice(0, 40)]);
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -35,16 +35,11 @@ export default function HomePage() {
   };
 
   const inspectFile = async (path: string) => {
-    try {
-      const r = await fetch(path);
-      const isJson = r.headers.get('content-type')?.includes('application/json');
-      const data = isJson ? await r.json() : { file: path, content: await r.text() };
-      setRaw(data);
-      setShowRaw(true);
-      log(`Discovery: Loaded ${path} (HTTP ${r.status})`);
-    } catch {
-      log(`Failed to load ${path}`);
-    }
+    const r = await fetch(path);
+    const data = r.headers.get('content-type')?.includes('application/json') ? await r.json() : { file: path, content: await r.text() };
+    setRaw(data);
+    setShowRaw(true);
+    log(`Standard Loaded: ${path} (${r.status})`);
   };
 
   const runAgent = async (g?: string) => {
@@ -54,12 +49,12 @@ export default function HomePage() {
     setReceipt(null);
     setShops([]);
     setGuard('');
-    setDiscount(0);
+    setDisc(0);
     setStatus('Evaluating...');
     log(`=== Goal: "${active}" ===`);
     try {
       await discover();
-      await wait(300);
+      await wait(250);
       const q = active.toLowerCase();
       if (q.includes('car') || q.includes('pizza') || q.includes('flight') || q.includes('hotel')) {
         setStatus('Guardrail Blocked');
@@ -72,28 +67,26 @@ export default function HomePage() {
       const d1 = await (await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list_services' }) })).json();
       setShops(d1.shops || []);
       log(`2. Scanned ${(d1.shops || []).length} bicycle nodes.`);
-      await wait(300);
+      await wait(250);
       const target = q.includes('tire') || q.includes('flat') || q.includes('puncture') ? 'flat-tire' : q.includes('brake') || q.includes('bleed') ? 'brake-bleed' : 'tune-up';
       const fast = q.includes('fast') || q.includes('urgent') || q.includes('quick');
       const chosen = fast ? 'velofix-hub' : 'budget-pedal';
       setShop(chosen);
       setSvc(target);
       log(`3. Picked "${chosen}" (${fast ? 'Fastest' : 'Cheapest'}) for "${target}".`);
-      await wait(300);
+      await wait(250);
       const d2 = await (await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: chosen, service_id: target }) })).json();
       setRaw(d2);
-
       if (d2.confirmation_token) {
         const price = Number(d2.service?.price || 0);
-        if (autoLimit > 0 && price <= autoLimit) {
-          log(`Policy Check: $${price} <= $${autoLimit} Auto-Limit. Executing autonomously...`);
-          await wait(300);
-          await executeApproval(d2.confirmation_token, chosen, target, 0);
+        if (limit > 0 && price <= limit) {
+          log(`Auto-Policy: $${price} <= $${limit} limit. Auto-approving...`);
+          await executeApprove(d2.confirmation_token, chosen, target, 0);
         } else {
           setToken(d2.confirmation_token);
           setSec(300);
           setStatus('Pending Approval');
-          log(`4. HITL Gate (403): $${price} exceeds $${autoLimit} limit. Token issued.`);
+          log(`4. HITL Gate (403): $${price} > $${limit} limit. Token issued.`);
         }
       }
     } finally {
@@ -101,14 +94,27 @@ export default function HomePage() {
     }
   };
 
+  const executeApprove = async (tk: string, sh: string, sv: string, ds: number) => {
+    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true }) });
+    const d = await r.json();
+    if (r.ok && ds > 0 && d.service) d.service.price = Math.round(d.service.price * (1 - ds / 100));
+    setRaw(d);
+    setLastToken(tk);
+    setToken('');
+    setSec(0);
+    if (r.ok) {
+      setStatus('Approved');
+      setReceipt(d);
+      log(`5. Approved! ${d.quote_id} ($${d.service?.price}) (HMAC: ${d.hmac_proof})`);
+    }
+  };
+
   const negotiate = async () => {
-    if (!token || discount > 0) return;
-    setStatus('Negotiating A2A...');
-    log(`A2A Agent: Requesting 15% SLA discount from ${shop}...`);
-    await wait(400);
-    setDiscount(15);
-    setStatus('Pending Approval');
-    log(`A2A Success: Vendor node accepted 15% discount!`);
+    if (!token || disc > 0) return;
+    log(`A2A Agent: Negotiating 15% discount with ${shop}...`);
+    await wait(300);
+    setDisc(15);
+    log(`A2A Deal: 15% discount applied!`);
   };
 
   const spoof = async () => {
@@ -120,88 +126,62 @@ export default function HomePage() {
     log(`Security (HTTP ${r.status}): Blocked rogue agent -> "${d.error}"`);
   };
 
-  const replayAttack = async () => {
+  const replay = async () => {
     if (!lastToken) return;
     setStatus('Replay Blocked');
     const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: lastToken, human_confirmed: true }) });
     const d = await r.json();
     setRaw(d);
     setShowRaw(true);
-    log(`Replay Defense (HTTP ${r.status}): ${d.error || 'Token already consumed'}`);
-  };
-
-  const copyCurl = () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vercel.app';
-    const cmd = `curl -X POST ${origin}/api/agent/execute -H "Content-Type: application/json" -d '{"action":"request_quote","shop_id":"${shop}","service_id":"${svc}"}'`;
-    navigator.clipboard.writeText(cmd);
-    log('Copied external agent cURL command!');
-  };
-
-  const executeApproval = async (activeToken: string, activeShop: string, activeSvc: string, activeDiscount: number) => {
-    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: activeShop, service_id: activeSvc, confirmation_token: activeToken, human_confirmed: true }) });
-    const d = await r.json();
-    if (r.ok && activeDiscount > 0 && d.service) {
-      d.service.price = Math.round(d.service.price * (1 - activeDiscount / 100));
-    }
-    setRaw(d);
-    setLastToken(activeToken);
-    setToken('');
-    setSec(0);
-    if (r.ok) {
-      setStatus('Approved');
-      setReceipt(d);
-      log(`5. Approved! ${d.quote_id} ($${d.service?.price}) (HMAC: ${d.hmac_proof})`);
-    }
-  };
-
-  const approve = () => executeApproval(token, shop, svc, discount);
-
-  const reject = () => {
-    setToken('');
-    setSec(0);
-    setStatus('Rejected');
-    log('Human rejected the quote.');
+    log(`Replay Guard (${r.status}): ${d.error || 'Token already consumed'}`);
   };
 
   return (
     <div style={{ maxWidth: '760px', margin: '0 auto', padding: '12px', fontFamily: 'sans-serif', background: '#f1f5f9', minHeight: '100vh' }}>
-      <div style={{ background: '#0f172a', color: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.3rem' }}>AgentMesh Web Ultra</h1>
-            <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>
-              Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}
-            </p>
-          </div>
-          <div style={{ background: '#1e293b', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
-            <label style={{ display: 'block', color: '#38bdf8', fontWeight: 600, marginBottom: '4px' }}>
-              Auto-Approve Limit: ${autoLimit}
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="50"
-              step="5"
-              value={autoLimit}
-              onChange={(e) => setAutoLimit(Number(e.target.value))}
-              style={{ width: '130px', cursor: 'pointer' }}
-            />
-          </div>
+      <div style={{ background: '#0f172a', color: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '1.3rem' }}>AgentMesh Web Ultra</h1>
+          <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>
+            Status: <strong>{status}</strong> {token ? `(${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : ''}
+          </p>
+        </div>
+        <div style={{ background: '#1e293b', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
+          <div style={{ color: '#38bdf8', fontWeight: 600 }}>Auto-Approve Limit: ${limit}</div>
+          <input type="range" min="0" max="50" step="5" value={limit} onChange={(e) => setLimit(Number(e.target.value))} style={{ width: '130px' }} />
         </div>
       </div>
 
       <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
-          <input value={goal} onChange={(e) => setGoal(e.target.value)} style={{ flex: 1, minWidth: '200px', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
-          <button onClick={() => runAgent()} disabled={busy || !!token} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+          <input value={goal} onChange={(e) => setGoal(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
+          <button onClick={() => runAgent()} disabled={busy || !!token} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600 }}>
             Run Agent
           </button>
         </div>
-
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-          <button onClick={() => { setGoal('Fix my flat tire as cheap as possible'); runAgent('Fix my flat tire as cheap as possible'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '12px', cursor: 'pointer' }}>
-            Cheapest Tire ($15)
-          </button>
-          <button onClick={() => { setGoal('Need fastest brake bleed urgently'); runAgent('Need fastest brake bleed urgently'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '12px', cursor: 'pointer' }}>
-            Fastest Brake (45m)
-          </button>
+          <button onClick={() => { setGoal('Fix my flat tire as cheap as possible'); runAgent('Fix my flat tire as cheap as possible'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '12px' }}>Cheapest Tire ($15)</button>
+          <button onClick={() => { setGoal('Need fastest brake bleed urgently'); runAgent('Need fastest brake bleed urgently'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '12px' }}>Fastest Brake (45m)</button>
+          <button onClick={() => { setGoal('Book a car oil change'); runAgent('Book a car oil change'); }} style={{ padding: '5px 10px', borderRadius: '999px', border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c', fontSize: '12px' }}>Test Car Guardrail</button>
+        </div>
+      </div>
+
+      {guard && <div style={{ background: '#fef2f2', border: '1px solid #ef4444', color: '#991b1b', padding: '12px', borderRadius: '10px', marginBottom: '12px', fontSize: '13px' }}><strong>Guardrail:</strong> {guard}</div>}
+
+      {shops.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+          {shops.map((s) => {
+            const item = s.services?.find((x: any) => x.id === svc) || s.services?.[0];
+            const sel = s.id === shop;
+            const p = sel && disc > 0 ? Math.round((item?.price || 0) * 0.85) : item?.price;
+            return (
+              <div key={s.id} onClick={() => setShop(s.id)} style={{ background: sel ? '#eff6ff' : '#fff', border: sel ? '2px solid #2563eb' : '1px solid #e2e8f0', padding: '12px', borderRadius: '10px' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px' }}>{s.name}</div>
+                <div style={{ fontSize: '13px', color: '#475569' }}>${p} {sel && disc > 0 ? '(15% off)' : ''} | {item?.eta_mins}m {sel ? '✓' : ''}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {receipt && (
+        <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
