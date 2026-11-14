@@ -170,7 +170,8 @@ export default function HomePage() {
       {shops.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
           {shops.map((s) => {
-            const item = s.services?.find((x: any) => x.id === svc) || s.services?.[0];
+            const list = Array.isArray(s.services) ? s.services : [];
+            const item = list.find((x: any) => x.id === svc) || list[0];
             const sel = s.id === shop;
             const p = sel && disc > 0 ? Math.round((item?.price || 0) * 0.85) : item?.price;
             return (
