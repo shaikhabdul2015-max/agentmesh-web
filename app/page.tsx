@@ -207,6 +207,58 @@ export default function HomePage() {
         </div>
       )}
 
-      {receipt && (
-        <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
-          <div style={{ fontWeight: 700, color: '#065f46', fontSize: '15px' }}>Verified Receipt: {receipt.quote_id}</div>
+            {receipt && (
+        <div style={{ background: '#ecfdf5', border: '1px solid #10b981', borderRadius: '10px', padding: '14px', marginBottom: '12px' }}>
+          <div style={{ fontWeight: 700, color: '#065f46', marginBottom: '6px' }}>
+            ✅ Transaction Receipt Confirmed
+          </div>
+          <pre style={{ margin: 0, fontSize: '12px', color: '#064e3b', overflowX: 'auto' }}>
+            {JSON.stringify(receipt, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {token && (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <button
+            onClick={() => approveQuote(token, shop)}
+            style={{ flex: 1, padding: '10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Approve Quote ({sec}s)
+          </button>
+          <button
+            onClick={() => negotiate()}
+            style={{ padding: '10px 14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Negotiate 15%
+          </button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+        <button onClick={() => spoof()} style={{ padding: '8px 12px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+          Simulate Spoof (403)
+        </button>
+        <button onClick={() => replay()} style={{ padding: '8px 12px', background: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+          Test Replay Guard (409)
+        </button>
+        <button onClick={() => setShowRaw(!showRaw)} style={{ padding: '8px 12px', background: '#475569', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+          {showRaw ? 'Hide Raw JSON' : 'Show Raw JSON'}
+        </button>
+      </div>
+
+      {showRaw && raw && (
+        <pre style={{ background: '#0f172a', color: '#38bdf8', padding: '12px', borderRadius: '8px', fontSize: '12px', overflowX: 'auto', marginBottom: '12px' }}>
+          {JSON.stringify(raw, null, 2)}
+        </pre>
+      )}
+
+      <div style={{ background: '#0f172a', color: '#e2e8f0', padding: '12px', borderRadius: '8px', fontSize: '12px', fontFamily: 'monospace' }}>
+        <div style={{ color: '#94a3b8', marginBottom: '6px', fontWeight: 600 }}>Agent Execution Logs:</div>
+        {logs.map((l, i) => (
+          <div key={i} style={{ marginBottom: '4px' }}>{l}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
