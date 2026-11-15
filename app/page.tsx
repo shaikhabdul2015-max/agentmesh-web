@@ -157,7 +157,7 @@ export default function HomePage() {
     setRaw(res.data);
     setShowRaw(true);
     addLog('Replay Guard (HTTP ' + res.status + '): ' + (res.data.error || 'Blocked reused token'));
-  
+  }
 
   return (
     <div style={{ maxWidth: '760px', margin: '0 auto', padding: '12px', fontFamily: 'sans-serif', background: '#f1f5f9', minHeight: '100vh' }}>
