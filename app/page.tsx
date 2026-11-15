@@ -27,31 +27,31 @@ export default function HomePage() {
     return () => clearInterval(t);
   }, [token, sec]);
 
-  const postApi = async (payload: any) => {
+  async function postApi(payload: any) {
     const r = await fetch('/api/agent/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const d = await r.json();
-    return { ok: r.ok, status: r.status, data: d };
-  };
+    const data = await r.json();
+    return { ok: r.ok, status: r.status, data };
+  }
 
-  const discover = async () => {
+  async function discover() {
     const d = await (await fetch('/.well-known/agent.json')).json();
     setRaw(d);
     log('1. Manifest: ' + d.name);
-  };
+  }
 
-  const inspectFile = async (path: string) => {
+  async function inspectFile(path: string) {
     const r = await fetch(path);
     const data = r.headers.get('content-type')?.includes('application/json') ? await r.json() : { file: path, content: await r.text() };
     setRaw(data);
     setShowRaw(true);
     log('Standard Loaded: ' + path);
-  };
+  }
 
-  const executeApprove = async (tk: string, sh: string, sv: string) => {
+  async function executeApprove(tk: string, sh: string, sv: string) {
     const res = await postApi({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true });
     setRaw(res.data);
     setLastToken(tk);
@@ -62,9 +62,9 @@ export default function HomePage() {
       setReceipt(res.data);
       log('5. Approved! ' + res.data.quote_id + ' ($' + res.data.service?.price + ')');
     }
-  };
+  }
 
-  const runAgent = async (g?: string) => {
+  async function runAgent(g?: string) {
     const active = g ?? goal;
     if (busy || token) return;
     setBusy(true);
@@ -114,9 +114,9 @@ export default function HomePage() {
       }
     }
     setBusy(false);
-  };
+  }
 
-  const negotiate = async () => {
+  async function negotiate() {
     if (!token || disc > 0) return;
     log('A2A Agent: Negotiating 15% discount with server...');
     const res = await postApi({ action: 'request_quote', shop_id: shop, service_id: svc, discount_percent: 15 });
@@ -127,24 +127,24 @@ export default function HomePage() {
       setDisc(15);
       log('A2A Deal: Server signed 15% discounted token ($' + res.data.service?.price + ')!');
     }
-  };
+  }
 
-  const spoof = async () => {
+  async function spoof() {
     setGuard('');
     setStatus('Attack Blocked (403)');
     const res = await postApi({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: 'forged.sig', human_confirmed: true });
     setRaw(res.data);
     log('Security (403): Blocked rogue agent');
-  };
+  }
 
-  const replay = async () => {
+  async function replay() {
     if (!lastToken) return;
     setStatus('Replay Blocked (409)');
     const res = await postApi({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: lastToken, human_confirmed: true });
     setRaw(res.data);
     setShowRaw(true);
     log('Replay Guard (HTTP ' + res.status + '): ' + (res.data.error || 'Blocked reused token'));
-  };
+  }
 
   return (
     <div style={{ maxWidth: '760px', margin: '0 auto', padding: '12px', fontFamily: 'sans-serif', background: '#f1f5f9', minHeight: '100vh' }}>
@@ -177,7 +177,7 @@ export default function HomePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
           {shops.map((s) => {
             const list = Array.isArray(s.services) ? s.services : [];
-            const item = list.find((x: any) => x.id === svc) || list;
+            const item = list.find((x: any) => x.id === svc) || list[0];
             const id = s.shop_id || s.id;
             const name = s.shop_name || s.name;
             const sel = id === shop;
@@ -200,4 +200,3 @@ export default function HomePage() {
       )}
 
       <div style={{ background: '#fff', padding: '14px', borderRadius: '12px' }}>
-
