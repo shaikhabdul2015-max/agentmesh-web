@@ -19,15 +19,26 @@ export default function HomePage() {
   const [limit, setLimit] = useState(0);
   const [disc, setDisc] = useState(0);
 
-  const log = (m: string) => setLogs((p) => ['[' + new Date().toLocaleTimeString() + '] ' + m, ...p.slice(0, 40)]);
+  function addLog(m: string) {
+    setLogs((p) => ['[' + new Date().toLocaleTimeString() + '] ' + m, ...p.slice(0, 40)]);
+  }
 
   useEffect(() => {
     if (!token || sec <= 0) return;
-    const t = setInterval(() => setSec((p) => (p <= 1 ? (setToken(''), setStatus('Expired'), 0) : p - 1)), 1000);
+    const t = setInterval(() => {
+      setSec((p) => {
+        if (p <= 1) {
+          setToken('');
+          setStatus('Expired');
+          return 0;
+        }
+        return p - 1;
+      });
+    }, 1000);
     return () => clearInterval(t);
   }, [token, sec]);
 
-  async function postApi(payload: any) {
+  async function callApi(payload: any) {
     const r = await fetch('/api/agent/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -38,21 +49,23 @@ export default function HomePage() {
   }
 
   async function discover() {
-    const d = await (await fetch('/.well-known/agent.json')).json();
+    const r = await fetch('/.well-known/agent.json');
+    const d = await r.json();
     setRaw(d);
-    log('1. Manifest: ' + d.name);
+    addLog('1. Manifest: ' + d.name);
   }
 
   async function inspectFile(path: string) {
     const r = await fetch(path);
-    const data = r.headers.get('content-type')?.includes('application/json') ? await r.json() : { file: path, content: await r.text() };
+    const isJson = r.headers.get('content-type')?.includes('application/json');
+    const data = isJson ? await r.json() : { file: path, content: await r.text() };
     setRaw(data);
     setShowRaw(true);
-    log('Standard Loaded: ' + path);
+    addLog('Standard Loaded: ' + path);
   }
 
-  async function executeApprove(tk: string, sh: string, sv: string) {
-    const res = await postApi({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true });
+  async function approveQuote(tk: string, sh: string, sv: string) {
+    const res = await callApi({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true });
     setRaw(res.data);
     setLastToken(tk);
     setToken('');
@@ -60,12 +73,12 @@ export default function HomePage() {
     if (res.ok) {
       setStatus('Approved');
       setReceipt(res.data);
-      log('5. Approved! ' + res.data.quote_id + ' ($' + res.data.service?.price + ')');
+      addLog('5. Approved! ' + res.data.quote_id + ' ($' + res.data.service?.price + ')');
     }
   }
 
-  async function runAgent(g?: string) {
-    const active = g ?? goal;
+  async function runAgent(customGoal?: string) {
+    const active = customGoal ?? goal;
     if (busy || token) return;
     setBusy(true);
     setReceipt(null);
@@ -73,7 +86,7 @@ export default function HomePage() {
     setGuard('');
     setDisc(0);
     setStatus('Evaluating...');
-    log('=== Goal: "' + active + '" ===');
+    addLog('=== Goal: "' + active + '" ===');
 
     await discover();
     const q = active.toLowerCase();
@@ -82,35 +95,35 @@ export default function HomePage() {
       const msg = 'Out-of-Scope: "' + active + '" is not a bicycle repair request.';
       setGuard(msg);
       setRaw({ status: 'blocked', reason: msg });
-      log('Guardrail: ' + msg);
+      addLog('Guardrail: ' + msg);
       setBusy(false);
       return;
     }
 
-    const d1 = await postApi({ action: 'list_services' });
+    const d1 = await callApi({ action: 'list_services' });
     setShops(d1.data.shops || []);
-    log('2. Scanned bicycle nodes.');
+    addLog('2. Scanned bicycle nodes.');
 
     const target = q.includes('tire') || q.includes('flat') ? 'flat-tire' : q.includes('brake') ? 'brake-bleed' : 'tune-up';
     const fast = q.includes('fast') || q.includes('urgent');
     const chosen = fast ? 'velofix-hub' : 'budget-pedal';
     setShop(chosen);
     setSvc(target);
-    log('3. Picked ' + chosen + ' for ' + target);
+    addLog('3. Picked ' + chosen + ' for ' + target);
 
-    const d2 = await postApi({ action: 'request_quote', shop_id: chosen, service_id: target });
+    const d2 = await callApi({ action: 'request_quote', shop_id: chosen, service_id: target });
     setRaw(d2.data);
 
     if (d2.data.confirmation_token) {
       const price = Number(d2.data.service?.price || 0);
       if (limit > 0 && price <= limit) {
-        log('Auto-Policy: Price within limit. Auto-approving...');
-        await executeApprove(d2.data.confirmation_token, chosen, target);
+        addLog('Auto-Policy: Price within limit. Auto-approving...');
+        await approveQuote(d2.data.confirmation_token, chosen, target);
       } else {
         setToken(d2.data.confirmation_token);
         setSec(300);
         setStatus('Pending Approval');
-        log('4. HITL Gate (403): Token issued for ' + d2.data.shop.name);
+        addLog('4. HITL Gate (403): Token issued for ' + d2.data.shop.name);
       }
     }
     setBusy(false);
@@ -118,32 +131,32 @@ export default function HomePage() {
 
   async function negotiate() {
     if (!token || disc > 0) return;
-    log('A2A Agent: Negotiating 15% discount with server...');
-    const res = await postApi({ action: 'request_quote', shop_id: shop, service_id: svc, discount_percent: 15 });
+    addLog('A2A Agent: Negotiating 15% discount with server...');
+    const res = await callApi({ action: 'request_quote', shop_id: shop, service_id: svc, discount_percent: 15 });
     setRaw(res.data);
     if (res.data.confirmation_token) {
       setToken(res.data.confirmation_token);
       setSec(300);
       setDisc(15);
-      log('A2A Deal: Server signed 15% discounted token ($' + res.data.service?.price + ')!');
+      addLog('A2A Deal: Server signed 15% discounted token ($' + res.data.service?.price + ')!');
     }
   }
 
   async function spoof() {
     setGuard('');
     setStatus('Attack Blocked (403)');
-    const res = await postApi({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: 'forged.sig', human_confirmed: true });
+    const res = await callApi({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: 'forged.sig', human_confirmed: true });
     setRaw(res.data);
-    log('Security (403): Blocked rogue agent');
+    addLog('Security (403): Blocked rogue agent');
   }
 
   async function replay() {
     if (!lastToken) return;
     setStatus('Replay Blocked (409)');
-    const res = await postApi({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: lastToken, human_confirmed: true });
+    const res = await callApi({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: lastToken, human_confirmed: true });
     setRaw(res.data);
     setShowRaw(true);
-    log('Replay Guard (HTTP ' + res.status + '): ' + (res.data.error || 'Blocked reused token'));
+    addLog('Replay Guard (HTTP ' + res.status + '): ' + (res.data.error || 'Blocked reused token'));
   }
 
   return (
@@ -151,7 +164,9 @@ export default function HomePage() {
       <div style={{ background: '#0f172a', color: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.3rem' }}>AgentMesh Web Ultra</h1>
-          <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>Status: <strong>{status}</strong> {token ? '(' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + ')' : ''}</p>
+          <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '13px' }}>
+            Status: <strong>{status}</strong> {token ? '(' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + ')' : ''}
+          </p>
         </div>
         <div style={{ background: '#1e293b', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
           <div style={{ color: '#38bdf8', fontWeight: 600 }}>Auto-Approve Limit: ${limit}</div>
@@ -195,8 +210,3 @@ export default function HomePage() {
       {receipt && (
         <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
           <div style={{ fontWeight: 700, color: '#065f46', fontSize: '15px' }}>Verified Receipt: {receipt.quote_id}</div>
-          <div style={{ fontSize: '13px', color: '#047857', marginTop: '4px' }}>{receipt.shop?.name} | {receipt.service?.name} | ${receipt.service?.price} | Proof: {receipt.hmac_proof}</div>
-        </div>
-      )}
-
-      <div style={{ background: '#fff', padding: '14px', borderRadius: '12px' }}>
