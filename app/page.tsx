@@ -221,7 +221,8 @@ export default function HomePage() {
       {token && (
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
           <button
-            onClick={() => approveQuote(token, shop)}
+            onClick={() => approveQuote(token, shop, svc)}
+
             style={{ flex: 1, padding: '10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
           >
             Approve Quote ({sec}s)
