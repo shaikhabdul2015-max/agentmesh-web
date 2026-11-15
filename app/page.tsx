@@ -20,13 +20,22 @@ export default function HomePage() {
   const [disc, setDisc] = useState(0);
 
   const log = (m: string) => setLogs((p) => ['[' + new Date().toLocaleTimeString() + '] ' + m, ...p.slice(0, 40)]);
-  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   useEffect(() => {
     if (!token || sec <= 0) return;
     const t = setInterval(() => setSec((p) => (p <= 1 ? (setToken(''), setStatus('Expired'), 0) : p - 1)), 1000);
     return () => clearInterval(t);
   }, [token, sec]);
+
+  const postApi = async (payload: any) => {
+    const r = await fetch('/api/agent/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    return { ok: r.ok, status: r.status, data: d };
+  };
 
   const discover = async () => {
     const d = await (await fetch('/.well-known/agent.json')).json();
@@ -43,16 +52,15 @@ export default function HomePage() {
   };
 
   const executeApprove = async (tk: string, sh: string, sv: string) => {
-    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true }) });
-    const d = await r.json();
-    setRaw(d);
+    const res = await postApi({ action: 'request_quote', shop_id: sh, service_id: sv, confirmation_token: tk, human_confirmed: true });
+    setRaw(res.data);
     setLastToken(tk);
     setToken('');
     setSec(0);
-    if (r.ok) {
+    if (res.ok) {
       setStatus('Approved');
-      setReceipt(d);
-      log('5. Approved! ' + d.quote_id + ' ($' + d.service?.price + ') HMAC: ' + d.hmac_proof);
+      setReceipt(res.data);
+      log('5. Approved! ' + res.data.quote_id + ' ($' + res.data.service?.price + ')');
     }
   };
 
@@ -66,79 +74,76 @@ export default function HomePage() {
     setDisc(0);
     setStatus('Evaluating...');
     log('=== Goal: "' + active + '" ===');
-    try {
-      await discover();
-      await wait(250);
-      const q = active.toLowerCase();
-      if (q.includes('car') || q.includes('pizza') || q.includes('flight') || q.includes('hotel')) {
-        setStatus('Guardrail Blocked');
-        const msg = 'Out-of-Scope: "' + active + '" is not a bicycle repair request.';
-        setGuard(msg);
-        setRaw({ status: 'blocked', reason: msg });
-        log('Guardrail: ' + msg);
-        return;
-      }
-      const d1 = await (await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list_services' }) })).json();
-      setShops(d1.shops || []);
-      log('2. Scanned bicycle nodes.');
-      await wait(250);
-      const target = q.includes('tire') || q.includes('flat') ? 'flat-tire' : q.includes('brake') ? 'brake-bleed' : 'tune-up';
-      const fast = q.includes('fast') || q.includes('urgent');
-      const chosen = fast ? 'velofix-hub' : 'budget-pedal';
-      setShop(chosen);
-      setSvc(target);
-      log('3. Picked ' + chosen + ' for ' + target);
-      await wait(250);
-      const d2 = await (await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: chosen, service_id: target }) })).json();
-      setRaw(d2);
-      if (d2.confirmation_token) {
-        const price = Number(d2.service?.price || 0);
-        if (limit > 0 && price <= limit) {
-          log('Auto-Policy: Price within limit. Auto-approving...');
-          await executeApprove(d2.confirmation_token, chosen, target);
-        } else {
-          setToken(d2.confirmation_token);
-          setSec(300);
-          setStatus('Pending Approval');
-          log('4. HITL Gate (403): Token issued for ' + d2.shop.name);
-        }
-      }
-    } finally {
+
+    await discover();
+    const q = active.toLowerCase();
+    if (q.includes('car') || q.includes('pizza') || q.includes('flight') || q.includes('hotel')) {
+      setStatus('Guardrail Blocked');
+      const msg = 'Out-of-Scope: "' + active + '" is not a bicycle repair request.';
+      setGuard(msg);
+      setRaw({ status: 'blocked', reason: msg });
+      log('Guardrail: ' + msg);
       setBusy(false);
+      return;
     }
+
+    const d1 = await postApi({ action: 'list_services' });
+    setShops(d1.data.shops || []);
+    log('2. Scanned bicycle nodes.');
+
+    const target = q.includes('tire') || q.includes('flat') ? 'flat-tire' : q.includes('brake') ? 'brake-bleed' : 'tune-up';
+    const fast = q.includes('fast') || q.includes('urgent');
+    const chosen = fast ? 'velofix-hub' : 'budget-pedal';
+    setShop(chosen);
+    setSvc(target);
+    log('3. Picked ' + chosen + ' for ' + target);
+
+    const d2 = await postApi({ action: 'request_quote', shop_id: chosen, service_id: target });
+    setRaw(d2.data);
+
+    if (d2.data.confirmation_token) {
+      const price = Number(d2.data.service?.price || 0);
+      if (limit > 0 && price <= limit) {
+        log('Auto-Policy: Price within limit. Auto-approving...');
+        await executeApprove(d2.data.confirmation_token, chosen, target);
+      } else {
+        setToken(d2.data.confirmation_token);
+        setSec(300);
+        setStatus('Pending Approval');
+        log('4. HITL Gate (403): Token issued for ' + d2.data.shop.name);
+      }
+    }
+    setBusy(false);
   };
 
   const negotiate = async () => {
     if (!token || disc > 0) return;
     log('A2A Agent: Negotiating 15% discount with server...');
-    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, discount_percent: 15 }) });
-    const d = await r.json();
-    setRaw(d);
-    if (d.confirmation_token) {
-      setToken(d.confirmation_token);
+    const res = await postApi({ action: 'request_quote', shop_id: shop, service_id: svc, discount_percent: 15 });
+    setRaw(res.data);
+    if (res.data.confirmation_token) {
+      setToken(res.data.confirmation_token);
       setSec(300);
       setDisc(15);
-      log('A2A Deal: Server signed new 15% discounted token ($' + d.service?.price + ')!');
+      log('A2A Deal: Server signed 15% discounted token ($' + res.data.service?.price + ')!');
     }
   };
 
   const spoof = async () => {
     setGuard('');
     setStatus('Attack Blocked (403)');
-    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: 'forged.sig', human_confirmed: true }) });
-    const d = await r.json();
-    setRaw(d);
+    const res = await postApi({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: 'forged.sig', human_confirmed: true });
+    setRaw(res.data);
     log('Security (403): Blocked rogue agent');
   };
 
   const replay = async () => {
     if (!lastToken) return;
     setStatus('Replay Blocked (409)');
-    const r = await fetch('/api/agent/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: lastToken, human_confirmed: true }) });
-    const d = await r.json();
-    setRaw(d);
+    const res = await postApi({ action: 'request_quote', shop_id: shop, service_id: svc, confirmation_token: lastToken, human_confirmed: true });
+    setRaw(res.data);
     setShowRaw(true);
-    log('Replay Guard (HTTP ' + r.status + '): ' + (d.error || 'Blocked reused token'));
+    log('Replay Guard (HTTP ' + res.status + '): ' + (res.data.error || 'Blocked reused token'));
   };
 
   return (
@@ -172,7 +177,7 @@ export default function HomePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
           {shops.map((s) => {
             const list = Array.isArray(s.services) ? s.services : [];
-            const item = list.find((x: any) => x.id === svc) || list[0];
+            const item = list.find((x: any) => x.id === svc) || list;
             const id = s.shop_id || s.id;
             const name = s.shop_name || s.name;
             const sel = id === shop;
@@ -186,3 +191,13 @@ export default function HomePage() {
           })}
         </div>
       )}
+
+      {receipt && (
+        <div style={{ background: '#ecfdf5', border: '2px solid #10b981', padding: '14px', borderRadius: '12px', marginBottom: '12px' }}>
+          <div style={{ fontWeight: 700, color: '#065f46', fontSize: '15px' }}>Verified Receipt: {receipt.quote_id}</div>
+          <div style={{ fontSize: '13px', color: '#047857', marginTop: '4px' }}>{receipt.shop?.name} | {receipt.service?.name} | ${receipt.service?.price} | Proof: {receipt.hmac_proof}</div>
+        </div>
+      )}
+
+      <div style={{ background: '#fff', padding: '14px', borderRadius: '12px' }}>
+
